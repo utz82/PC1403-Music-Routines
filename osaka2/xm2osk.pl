@@ -132,7 +132,7 @@ print OUTFILE "\tdb ", '$00', "\n\n";
 
 #convert pattern data
 my (@ch1, @ch2, @ch3, @drums, @speed);
-my ($rows, $cpval, $temp, $mx, $nx);
+my ($rows, $cpval, $temp, $temp2, $mx, $nx);
 for ($ix = 0; $ix <= ($uniqueptns)-1; $ix++) {
 	$ptnusage = IsPatternUsed($ix);
 
@@ -204,10 +204,10 @@ for ($ix = 0; $ix <= ($uniqueptns)-1; $ix++) {
 						if (($cpval&8) == 8 && $temp == 15) {		#if bit 3 is set and value is $f, it's fx command
 							$fileoffset++;
 							sysseek(INFILE, $fileoffset, 0) or die $!;	#read next byte of row
-							sysread(INFILE, $temp, 1) == 1 or die $!;
-							$temp = ord($temp);
-							if (($cpval&16) == 16 && $temp >= 6 && $temp <= 31) {
-								$speed[$rows] = $temp * 4;	#setting speed if bit 4 is set
+							sysread(INFILE, $temp2, 1) == 1 or die $!;
+							$temp2 = ord($temp2);
+							if (($cpval&16) == 16 && $temp2 >= 6 && $temp2 <= 31) {
+								$speed[$rows] = $temp2 * 4;	#setting speed if bit 4 is set
 							}
 							else {
 								$sdebug++;
