@@ -103,17 +103,19 @@ $asmptnoffset[0] = 34997 + $songlength * 2;
 
 if ( ($uniqueptns) >= 2 ) {
 	for ($ix = 1; $ix <= $uniqueptns-1; $ix++) {
-		for ($jx = 0; $jx <= ($ix)-1; $jx++) {
-			$tempoffset = 1 + $tempoffset + $ptnlengths[($ix)-1] * 3;
-		}
-		$asmptnoffset[$ix] = $tempoffset + 34997 + $songlength * 2;
-		$tempoffset = 0;
+		if (IsPatternUsed($ix) == 1) {			#new
+			for ($jx = 0; $jx <= ($ix)-1; $jx++) {
+				$tempoffset = 1 + $tempoffset + $ptnlengths[($ix)-1] * 3 if (IsPatternUsed($jx) == 1);
+			}
+			$asmptnoffset[$ix] = $tempoffset + 34997 + $songlength * 2;
+			$tempoffset = 0;
 		
-		if ( $ARGV[0] eq '-v' ) {
-		print "pattern $ix starts at 0x";
-		printf ("%x", $asmptnoffset[$ix]);
-		print "\n";
-		}
+			if ( $ARGV[0] eq '-v' ) {
+			print "pattern $ix starts at 0x";
+			printf ("%x", $asmptnoffset[$ix]);
+			print "\n";
+			}
+		}						#new
 	}
 }
 
