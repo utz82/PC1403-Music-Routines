@@ -28,6 +28,24 @@ TRG=target.h
 
 all:	$(LDR)
 
+pc1403:
+	@echo '** target: PC-1403(H) **'
+	@echo '.globl BASE' > $(TRG)
+	@echo 'BASE = 0x80e8 ; for PC-1403(H)' >> $(TRG)
+	@make
+
+pc1350:
+	@echo '** target: PC-1350 **'
+	@echo '.globl BASE' > $(TRG)
+	@echo 'BASE = 0x60e8 ; for PC-1350' >> $(TRG)
+	@make
+
+pc2500:
+	@echo '** target: PC-2500 **'
+	@echo '.globl BASE' > $(TRG)
+	@echo 'BASE = 0x60e8 ; for PC-2500' >> $(TRG)
+	@make
+
 %.rel:	%.asm $(TRG)
 	$(ASM) $(ASMFLAGS) $<
 
@@ -50,6 +68,6 @@ clean:
 	$(RM) *.rel *.sym *.hlr *.map *.lst *.rst
 
 distclean:
-	$(RM) *.rel *.sym *.hlr *.map *.lst *.rst *.ihx *.img *.wav $(IHX2BAS) $(IHX2BIN)
+	$(RM) *.rel *.sym *.hlr *.map *.lst *.rst *.img *.wav $(HEX) $(IHX2BAS) $(IHX2BIN) $(LDR)
 
-.PHONY:	all clean distclean
+.PHONY:	all clean distclean pc1350 pc1403

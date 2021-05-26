@@ -1,24 +1,48 @@
-;osaka II beeper engine for sharp pc-1403
+;osaka II beeper engine for SHARP PC
 ;version 1.0 by utz 07'2014
 ;2 channels pulse-interleaving square wave sound + pwm drums
 
-I	equ $00 
-J	equ $01 
-A	equ $02 
-B	equ $03 
-XL	equ $04 
-XH	equ $05 
-YL	equ $06 
-YH	equ $07
-K 	equ $08
-L 	equ $09
-M 	equ $0A
-N 	equ $0B
-WRK	equ $0C
-OUTP	equ $5f	;beeper out
+;modified for the AS61860 assembler by Robert van Engelen:
+;https://shop-pdp.net/ashtml/asmlnk.htm
+;$ as61860 -los main.asm
+;$ as61860 -los music.asm
+;$ aslink -imwu -b play=BASE play main.rel music.rel
 
+;option 1: create BASIC bootloader
+;$ ihx2bas play.ihx
+;then RUN after CLOAD and CALL A
 
-	org $80e8
+;option 2: create binary to load with CLOAD M
+;$ ihx2bin play.ihx
+;$ bin2wav --type=bin --addr=33000 --pc=1403 play.bin
+;CLOAD M
+;CALL 33000
+
+noloop = 1			; 1 = do not loop playback, 0 = loop playback
+
+I	.equ 0x00 
+J	.equ 0x01 
+A	.equ 0x02 
+B	.equ 0x03 
+XL	.equ 0x04 
+XH	.equ 0x05 
+YL	.equ 0x06 
+YH	.equ 0x07
+K 	.equ 0x08
+L 	.equ 0x09
+M 	.equ 0x0a
+N 	.equ 0x0b
+WRK	.equ 0x0c
+OUTP	.equ 0x5f		;beeper outc port
+
+BZHI	.equ 0x10		;beeper hi mask to set BZ1 with orim
+BZLO	.equ 0x00		;beeper lo mask to clear BZ1-BZ3 with anim
+
+.include "target.h"
+
+.area	play (REL)
+
+;	.org 0x80e8		; PC-1403 0x80e8
 
 begin:	lip OUTP		;preserve outbyte
 	ldm
@@ -27,14 +51,14 @@ begin:	lip OUTP		;preserve outbyte
 init:	
 	lp XL			;setup index register, X = XL+(XH*256)
 mpntr0:
-	lia $b4			;point to song data-1
+	lia <(sdata-1)		; PC-1403 0xb4		;point to song data-1
 	exam
 	lp XH
 mpntr1:
-	lia $88
+	lia >(sdata-1)		; PC-1403 0x88
 	exam
 	
-	lp WRK			;store ptn sequence pointer in $0c..$0d
+	lp WRK			;store ptn sequence pointer in 0x0c..0x0d
 	liq XL
 	mvb
 	
@@ -44,13 +68,18 @@ setptn:				;read pattern sequence
 	mvb
 
 	ixl			;hibyte of ptn address to A
-	cpia $00		;if it is 0, end of seq reached -> reset pointer
-	;jpz end		;exit if $ff found - uncomment this and comment out next if you don't want to loop
+	cpia 0x00		;if it is 0, end of seq reached -> reset pointer
+
+.if	noloop
+	jrzp end		;exit if 0xff found - uncomment this and comment out next if you don't want to loop NOTE: jpz->jrzp
+.else
 	jrzm init
+.endif
+
 	exab			;hibyte of ptn addr to B
 	ixl			;lobyte of ptn addr to A
 	
-	lp WRK			;store ptn sequence pointer in $0c..$0d
+	lp WRK			;store ptn sequence pointer in 0x0c..0x0d
 	liq XL
 	mvb
 
@@ -60,19 +89,19 @@ setptn:				;read pattern sequence
 	
 rdata:
 	test 8			;check BRK/ON key
-	jpnz end		;and exit if pressed
+	jrnzp end		;and exit if pressed NOTE: jpnz->jrnzp
 
 	ixl			;inc index, ->dp, value to A (drum byte)
-	cpia $ff		;check for end marker $ff
-	jrzm setptn		;loop if $ff found
+	cpia 0xff		;check for end marker 0xff
+	jrzm setptn		;loop if 0xff found
 	
 	lp M			;store speed value
 	exam
 	ldm			;load back
-	anim $fc		;delete drum value
+	anim 0xfc		;delete drum value
 
-	ania $03		;delete speed value
-	cpia 0			;check if drum is active
+	ania 0x03		;delete speed value
+	;cpia 0			;check if drum is active NOTE: ania 0x03 sets z flag
 	jrzp nodrum
 	call drum		;play drum
 
@@ -84,7 +113,18 @@ nodrum:
 	
 	call playrow
 chkbp:
-	jp rdata
+	jrm rdata		;NOTE: jp->jrm
+
+;***************************************************************
+
+end:
+	pop
+	lip OUTP		;restore outbyte
+	exam
+	outc
+	rtn
+
+;**************************************************************
 
 playrow:
 	push
@@ -102,7 +142,7 @@ a0b0:				;ch1 off, ch2 off
 
 skip1a:
 	lip OUTP	;4	;set output mask
-	anim 0		;4
+	anim BZLO	;4
 skip1:
 	outc		;2	;write to beeper port
 
@@ -114,7 +154,7 @@ skip1:
 	
 skip2a:
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip2:	outc		;2
 
 			;44*16+10 = 714
@@ -131,7 +171,7 @@ skip1aB:
 	;wait 2		;8	;eliminate overhead
 	
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip1B:	outc		;2
 	
 	;lp L		;2
@@ -146,7 +186,7 @@ skip2aB:
 	;nopt		;3
 
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip2B:	outc		;2
 ;*******	
 
@@ -162,7 +202,7 @@ skip1aC:
 	;wait 2		;8	;eliminate overhead
 	
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip1C:	outc		;2
 	
 	;lp L		;2
@@ -177,7 +217,7 @@ skip2aC:
 	;nopt		;3
 
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip2C:	outc		;2
 ;*******	
 
@@ -193,7 +233,7 @@ skip1aD:
 	;wait 2		;8	;eliminate overhead
 	
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip1D:	outc		;2
 	
 	;lp L		;2
@@ -208,7 +248,7 @@ skip2aD:
 	;nopt		;3
 
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip2D:	outc		;2
 ;*******	
 
@@ -224,7 +264,7 @@ skip1aE:
 	;wait 2		;8	;eliminate overhead
 	
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip1E:	outc		;2
 	
 	;lp L		;2
@@ -239,7 +279,7 @@ skip2aE:
 	;nopt		;3
 
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip2E:	outc		;2
 ;*******	
 
@@ -255,7 +295,7 @@ skip1aF:
 	;wait 2		;8	;eliminate overhead
 	
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip1F:	outc		;2
 	
 	;lp L		;2
@@ -270,7 +310,7 @@ skip2aF:
 	;nopt		;3
 
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip2F:	outc		;2
 ;*******	
 
@@ -286,7 +326,7 @@ skip1aG:
 	;wait 2		;8	;eliminate overhead
 	
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip1G:	outc		;2
 	
 	;lp L		;2
@@ -301,7 +341,7 @@ skip2aG:
 	;nopt		;3
 
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip2G:	outc		;2
 ;*******	
 
@@ -317,7 +357,7 @@ skip1aH:
 	;wait 2		;8	;eliminate overhead
 	
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip1H:	outc		;2
 	
 	;lp L		;2
@@ -332,7 +372,7 @@ skip2aH:
 	;nopt		;3
 
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip2H:	outc		;2
 ;*******	
 
@@ -348,7 +388,7 @@ skip1aI:
 	;wait 2		;8	;eliminate overhead
 	
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip1I:	outc		;2
 	
 	;lp L		;2
@@ -363,7 +403,7 @@ skip2aI:
 	;nopt		;3
 
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip2I:	outc		;2
 ;*******	
 
@@ -379,7 +419,7 @@ skip1aJ:
 	;wait 2		;8	;eliminate overhead
 	
 	lip OUTP	;4
-skip1J:	anim 0		;4
+skip1J:	anim BZLO	;4
 	outc		;2
 	
 	;lp L		;2
@@ -394,7 +434,7 @@ skip2aJ:
 	;nopt		;3
 
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip2J:	outc		;2
 ;*******	
 
@@ -410,7 +450,7 @@ skip1aK:
 	;wait 2		;8	;eliminate overhead
 	
 skip1K:	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 	outc		;2
 	
 	;lp L		;2
@@ -425,7 +465,7 @@ skip2aK:
 	;nopt		;3
 
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip2K:	outc		;2
 ;*******	
 
@@ -441,7 +481,7 @@ skip1aL:
 	;wait 2		;8	;eliminate overhead
 	
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip1L:	outc		;2
 	
 	;lp L		;2
@@ -456,7 +496,7 @@ skip2aL:
 	;nopt		;3
 
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip2L:	outc		;2
 ;*******	
 
@@ -472,7 +512,7 @@ skip1aM:
 	;wait 2		;8	;eliminate overhead
 	
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip1M:	outc		;2
 	
 	;lp L		;2
@@ -487,7 +527,7 @@ skip2aM:
 	;nopt		;3
 
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip2M:	outc		;2
 ;*******	
 
@@ -503,7 +543,7 @@ skip1aN:
 	;wait 2		;8	;eliminate overhead
 	
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip1N:	outc		;2
 	
 	;lp L		;2
@@ -518,7 +558,7 @@ skip2aN:
 	;nopt		;3
 
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip2N:	outc		;2
 ;*******	
 
@@ -534,7 +574,7 @@ skip1aO:
 	;wait 2		;8	;eliminate overhead
 	
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip1O:	outc		;2
 	
 	;lp L		;2
@@ -549,7 +589,7 @@ skip2aO:
 	;nopt		;3
 
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip2O:	outc		;2
 ;*******	
 
@@ -565,7 +605,7 @@ skip1aP:
 	;wait 2		;8	;eliminate overhead
 	
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip1P:	outc		;2
 	
 	;lp L		;2
@@ -580,7 +620,7 @@ skip2aP:
 	;nopt		;3
 
 	lip OUTP	;4
-	anim 0		;4
+	anim BZLO	;4
 skip2P:	outc		;2
 	
 
@@ -604,7 +644,7 @@ skip3a:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip3:	outc
 	;lp L
 	decl
@@ -617,7 +657,7 @@ skip4a:
 	;nopt		;3
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip4:	outc
 ;*******
 
@@ -631,7 +671,7 @@ skip3aB:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip3B:	outc
 	;lp L
 	decl
@@ -644,7 +684,7 @@ skip4aB:
 	;nopt		;3
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip4B:	outc
 ;*******
 
@@ -658,7 +698,7 @@ skip3aC:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip3C:	outc
 	;lp L
 	decl
@@ -671,7 +711,7 @@ skip4aC:
 	;nopt		;3
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip4C:	outc
 ;*******
 
@@ -685,7 +725,7 @@ skip3aD:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip3D:	outc
 	;lp L
 	decl
@@ -698,7 +738,7 @@ skip4aD:
 	;nopt		;3
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip4D:	outc
 ;*******
 
@@ -712,7 +752,7 @@ skip3aE:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip3E:	outc
 	;lp L
 	decl
@@ -725,7 +765,7 @@ skip4aE:
 	;nopt		;3
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip4E:	outc
 ;*******
 
@@ -739,7 +779,7 @@ skip3aF:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip3F:	outc
 	;lp L
 	decl
@@ -752,7 +792,7 @@ skip4aF:
 	;nopt		;3
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip4F:	outc
 ;*******
 
@@ -766,7 +806,7 @@ skip3aG:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip3G:	outc
 	;lp L
 	decl
@@ -779,7 +819,7 @@ skip4aG:
 	;nopt		;3
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip4G:	outc
 ;*******
 
@@ -793,7 +833,7 @@ skip3aH:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip3H:	outc
 	;lp L
 	decl
@@ -806,7 +846,7 @@ skip4aH:
 	;nopt		;3
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip4H:	outc
 ;*******
 
@@ -820,7 +860,7 @@ skip3aI:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip3I:	outc
 	;lp L
 	decl
@@ -833,7 +873,7 @@ skip4aI:
 	;nopt		;3
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip4I:	outc
 ;*******
 
@@ -847,7 +887,7 @@ skip3aJ:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip3J:	outc
 	;lp L
 	decl
@@ -860,7 +900,7 @@ skip4aJ:
 	;nopt		;3
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip4J:	outc
 ;*******
 
@@ -874,7 +914,7 @@ skip3aK:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip3K:	outc
 	;lp L
 	decl
@@ -887,7 +927,7 @@ skip4aK:
 	;nopt		;3
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip4K:	outc
 ;*******
 
@@ -901,7 +941,7 @@ skip3aL:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip3L:	outc
 	;lp L
 	decl
@@ -914,7 +954,7 @@ skip4aL:
 	;nopt		;3
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip4L:	outc
 ;*******
 
@@ -928,7 +968,7 @@ skip3aM:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip3M:	outc
 	;lp L
 	decl
@@ -941,7 +981,7 @@ skip4aM:
 	;nopt		;3
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip4M:	outc
 ;*******
 
@@ -955,7 +995,7 @@ skip3aN:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip3N:	outc
 	;lp L
 	decl
@@ -968,7 +1008,7 @@ skip4aN:
 	;nopt		;3
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip4N:	outc
 ;*******
 
@@ -982,7 +1022,7 @@ skip3aO:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip3O:	outc
 	;lp L
 	decl
@@ -995,7 +1035,7 @@ skip4aO:
 	;nopt		;3
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip4O:	outc
 ;*******
 
@@ -1009,7 +1049,7 @@ skip3aP:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip3P:	outc
 	;lp L
 	decl
@@ -1022,7 +1062,7 @@ skip4aP:
 	;nopt		;3
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip4P:	outc
 
 
@@ -1046,7 +1086,7 @@ skip5a:
 	;wait 2
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip5:	outc
 	;lp L
 	decl
@@ -1059,7 +1099,7 @@ skip6a:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip6:	outc
 ;*******
 
@@ -1073,7 +1113,7 @@ skip5aB:
 	;wait 2
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip5B:	outc
 	;lp L
 	decl
@@ -1086,7 +1126,7 @@ skip6aB:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip6B:	outc
 ;*******
 
@@ -1100,7 +1140,7 @@ skip5aC:
 	;wait 2
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip5C:	outc
 	;lp L
 	decl
@@ -1113,7 +1153,7 @@ skip6aC:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip6C:	outc
 ;*******
 
@@ -1127,7 +1167,7 @@ skip5aD:
 	;wait 2
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip5D:	outc
 	;lp L
 	decl
@@ -1140,7 +1180,7 @@ skip6aD:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip6D:	outc
 ;*******
 
@@ -1154,7 +1194,7 @@ skip5aE:
 	;wait 2
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip5E:	outc
 	;lp L
 	decl
@@ -1167,7 +1207,7 @@ skip6aE:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip6E:	outc
 ;*******
 
@@ -1181,7 +1221,7 @@ skip5aF:
 	;wait 2
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip5F:	outc
 	;lp L
 	decl
@@ -1194,7 +1234,7 @@ skip6aF:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip6F:	outc
 ;*******
 
@@ -1208,7 +1248,7 @@ skip5aG:
 	;wait 2
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip5G:	outc
 	;lp L
 	decl
@@ -1221,7 +1261,7 @@ skip6aG:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip6G:	outc
 ;*******
 
@@ -1235,7 +1275,7 @@ skip5aH:
 	;wait 2
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip5H:	outc
 	;lp L
 	decl
@@ -1248,7 +1288,7 @@ skip6aH:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip6H:	outc
 ;*******
 
@@ -1262,7 +1302,7 @@ skip5aI:
 	;wait 2
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip5I:	outc
 	;lp L
 	decl
@@ -1275,7 +1315,7 @@ skip6aI:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip6I:	outc
 ;*******
 
@@ -1289,7 +1329,7 @@ skip5aJ:
 	;wait 2
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip5J:	outc
 	;lp L
 	decl
@@ -1302,7 +1342,7 @@ skip6aJ:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip6J:	outc
 ;*******
 
@@ -1316,7 +1356,7 @@ skip5aK:
 	;wait 2
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip5K:	outc
 	;lp L
 	decl
@@ -1329,7 +1369,7 @@ skip6aK:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip6K:	outc
 ;*******
 
@@ -1343,7 +1383,7 @@ skip5aL:
 	;wait 2
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip5L:	outc
 	;lp L
 	decl
@@ -1356,7 +1396,7 @@ skip6aL:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip6L:	outc
 ;*******
 
@@ -1370,7 +1410,7 @@ skip5aM:
 	;wait 2
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip5M:	outc
 	;lp L
 	decl
@@ -1383,7 +1423,7 @@ skip6aM:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip6M:	outc
 ;*******
 
@@ -1397,7 +1437,7 @@ skip5aN:
 	;wait 2
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip5N:	outc
 	;lp L
 	decl
@@ -1410,7 +1450,7 @@ skip6aN:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip6N:	outc
 ;*******
 
@@ -1424,7 +1464,7 @@ skip5aO:
 	;wait 2
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip5O:	outc
 	;lp L
 	decl
@@ -1437,7 +1477,7 @@ skip6aO:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip6O:	outc
 ;*******
 
@@ -1451,7 +1491,7 @@ skip5aP:
 	;wait 2
 
 	lip OUTP
-	anim 0
+	anim BZLO
 skip5P:	outc
 	;lp L
 	decl
@@ -1464,7 +1504,7 @@ skip6aP:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip6P:	outc
 
 	;deci
@@ -1493,7 +1533,7 @@ skip7a:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip7:	outc
 	;lp L
 	decl
@@ -1506,7 +1546,7 @@ skip8a:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip8:	outc
 ;*******
 
@@ -1520,7 +1560,7 @@ skip7aB:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip7B:	outc
 	;lp L
 	decl
@@ -1533,7 +1573,7 @@ skip8aB:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip8B:	outc
 ;*******
 
@@ -1547,7 +1587,7 @@ skip7aC:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip7C:	outc
 	;lp L
 	decl
@@ -1560,7 +1600,7 @@ skip8aC:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip8C:	outc
 ;*******
 
@@ -1574,7 +1614,7 @@ skip7aD:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip7D:	outc
 	;lp L
 	decl
@@ -1587,7 +1627,7 @@ skip8aD:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip8D:	outc
 ;*******
 
@@ -1601,7 +1641,7 @@ skip7aE:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip7E:	outc
 	;lp L
 	decl
@@ -1614,7 +1654,7 @@ skip8aE:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip8E:	outc
 ;*******
 
@@ -1628,7 +1668,7 @@ skip7aF:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip7F:	outc
 	;lp L
 	decl
@@ -1641,7 +1681,7 @@ skip8aF:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip8F:	outc
 ;*******
 
@@ -1655,7 +1695,7 @@ skip7aG:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip7G:	outc
 	;lp L
 	decl
@@ -1668,7 +1708,7 @@ skip8aG:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip8G:	outc
 ;*******
 
@@ -1682,7 +1722,7 @@ skip7aH:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip7H:	outc
 	;lp L
 	decl
@@ -1695,7 +1735,7 @@ skip8aH:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip8H:	outc
 ;*******
 
@@ -1709,7 +1749,7 @@ skip7aI:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip7I:	outc
 	;lp L
 	decl
@@ -1722,7 +1762,7 @@ skip8aI:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip8I:	outc
 ;*******
 
@@ -1736,7 +1776,7 @@ skip7aJ:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip7J:	outc
 	;lp L
 	decl
@@ -1749,7 +1789,7 @@ skip8aJ:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip8J:	outc
 ;*******
 
@@ -1763,7 +1803,7 @@ skip7aK:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip7K:	outc
 	;lp L
 	decl
@@ -1776,7 +1816,7 @@ skip8aK:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip8K:	outc
 ;*******
 
@@ -1790,7 +1830,7 @@ skip7aL:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip7L:	outc
 	;lp L
 	decl
@@ -1803,7 +1843,7 @@ skip8aL:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip8L:	outc
 ;*******
 
@@ -1817,7 +1857,7 @@ skip7aM:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip7M:	outc
 	;lp L
 	decl
@@ -1830,7 +1870,7 @@ skip8aM:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip8M:	outc
 ;*******
 
@@ -1844,7 +1884,7 @@ skip7aN:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip7N:	outc
 	;lp L
 	decl
@@ -1857,7 +1897,7 @@ skip8aN:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip8N:	outc
 ;*******
 
@@ -1871,7 +1911,7 @@ skip7aO:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip7O:	outc
 	;lp L
 	decl
@@ -1884,7 +1924,7 @@ skip8aO:
 	;nopt		;3
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip8O:	outc
 ;*******
 
@@ -1898,7 +1938,7 @@ skip7aP:
 	;wait 2
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip7P:	outc
 	;lp L
 	decl
@@ -1910,7 +1950,7 @@ skip7P:	outc
 skip8aP:
 
 	lip OUTP
-	orim $10
+	orim BZHI
 skip8P:	outc
 
 	decm
@@ -1920,29 +1960,20 @@ skip8P:	outc
 	rtn
 
 ;***************************************************************
-end:
-	pop
-	lip OUTP		;restore outbyte
-	exam
-	rtn
 
-;***************************************************************
-
-	ds 6,0				;padding, so drum sounds are w/in page limits
-
-drum:	
+drum:					; A is 1, 2 or 3
 dinit:
 	lp YL		;2	;1	;preserve song data pointer in Y
 	liq XL		;4	;2
 	mvb		;7	;1
 
 dselect:
-	rc		;2	;1	;clear carry
+	rc		;2	;1	;clear carry NOTE: rc is unused?
 	deca		;4	;1	;decrease offset byte
 	lp XL		;2	;1	;set lobyte of drum table pointer-1
 	exam		;3	;1
 	lp XH		;2	;1	;set hibyte of drum sound/table pointer-1
-	lia $88		;4	;2
+	lia >(sdata-1)		;4	; PC-1403 0x88	2
 	exam		;3	;1
 	ixl				;load offset from table
 	lp XL
@@ -1954,13 +1985,13 @@ playDrum:
 	cpma		;3	;1	;(P)=0, so we can do this and save 1 byte
 	jrzp dexit	;7/4	;2	;exit if counter val=0
 	
-	orim $10	;4	;1	;beeper on
+	orim BZHI	;4	;1	;beeper on
 	outc		;2	;1
 dwait1:
 	deca		;(4)	;1
 	jrnzm dwait1	;(7)/4	;2	sum=11*sum_of_odd_bytes
 
-	anim $ef	;4	;2	;mask for beeper off
+	anim 0xef	;4	;2	;mask for beeper off NOTE: anim 0xef but why?
 	ixl		;7	;1	;load next counter value	
 	cpma		;3	;1	;if it is 0
 	jrzp dexit	;7/4	;2	;exit
@@ -1984,34 +2015,41 @@ dexit:
 			;26	;45
 			;39+26+7+[51*number_of_bytes]+[11*sum_of_bytes]
 		
-drumTable:				;the locations of the drum sounds-1
+;***************************************************************
 
-	db $03,$1d,$66
+	.rept 9				;padding
+	.db 0
+	.endm
 
+drumTable::				;must be located at page-aligned address+1 0xHH01
 
-drum1:	db 1,4,3,8,6,4,9,8,8,8
-	db 16,16,16,32,32,32,32
-	db 64,64,64,64,65
-	db 128,128,128,0
+	;lobyte of address into drum1/2/3 tables, e.g. 0xHH03,0xHH1d,0xHH66
+	.db 0x03,0x1d,0x66
+
+drum1:					;located at 0xHH03
+	.db 1,4,3,8,6,4,9,8,8,8
+	.db 16,16,16,32,32,32,32
+	.db 64,64,64,64,65
+	.db 128,128,128,0
 	
-drum2:
-	db 4,3,8,6,4,9,8,8,8
-	db 16,16,16,32,32,32,32,64,64,64
-	db 16,4,15,22,11,13,22,15,7
-	db 19,12,2,11,15,3,5,7,15,18
-	db 20,19,17,9,20,11,18,15,2,3
-	db 11,9,11,15,9,12,7,15,8,16
-	db 8,14,7,4,11,15,21,15,22,7
-	db 17,17,25,20,0
+drum2:					;located at 0xHH1d
+	.db 4,3,8,6,4,9,8,8,8
+	.db 16,16,16,32,32,32,32,64,64,64
+	.db 16,4,15,22,11,13,22,15,7
+	.db 19,12,2,11,15,3,5,7,15,18
+	.db 20,19,17,9,20,11,18,15,2,3
+	.db 11,9,11,15,9,12,7,15,8,16
+	.db 8,14,7,4,11,15,21,15,22,7
+	.db 17,17,25,20,0
 
-drum3:
-	db 5,2,4,1,5,8,2,3,8,7
-	db 5,3,5,8,4,8,6,6,1,7
-	db 7,4,2,7,5,8,6,8,8,5
-	db 3,3,7,2,3,3,4,6,5,8
-	db 5,8,5,5,1,5,3,4,3,7
-	db 6,3,1,8,6,1,6,2,2,1
-	db 6,6,3,6,8,7,3,1,8,7
-	db 4,2,1,4,1,255,255,0
+drum3:					;located at 0xHH66
+	.db 5,2,4,1,5,8,2,3,8,7
+	.db 5,3,5,8,4,8,6,6,1,7
+	.db 7,4,2,7,5,8,6,8,8,5
+	.db 3,3,7,2,3,3,4,6,5,8
+	.db 5,8,5,5,1,5,3,4,3,7
+	.db 6,3,1,8,6,1,6,2,2,1
+	.db 6,6,3,6,8,7,3,1,8,7
+	.db 4,2,1,4,1,255,255,0
 	
 sdata:

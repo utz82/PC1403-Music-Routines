@@ -1,6 +1,0 @@
-.globl	BASE
-
-; PC-1403(H) (load to 0x80e8-0x8bbb)
-; BASE = 0x80e8
-; PC-1350 (load to 0x60e8-0x6bbb)
-BASE = 0x60e8

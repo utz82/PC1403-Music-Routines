@@ -33,7 +33,7 @@ unlink $outfile if ( -e $outfile );
 
 #create new music.asm
 open OUTFILE, ">$outfile" or die $!;
-print OUTFILE "\n\t", 'org $88b5', "\n\nplist:\n";
+print OUTFILE ".area\tplay (REL)\n\nplist:\n";
 
 #setup variables
 my ($binpos, $fileoffset, $ptnoffset, $ix, $uniqueptns, $headlength, $packedlength, $plhibyte, $ptnlengthx, $ptnusage);
@@ -124,12 +124,10 @@ $fileoffset = 80;
 for ($ix = 0; $ix <= ($songlength)-1; $ix++) {
 	sysseek(INFILE, $fileoffset + $ix, 0) or die $!;
 	sysread(INFILE, $patval, 1) == 1 or die $!;
-	print OUTFILE "\t", 'dw $';
-	printf(OUTFILE "%x", $asmptnoffset[ord($patval)]);
-	print OUTFILE "\n";
+	print OUTFILE "\t.dw ptn$ix-1\n";
 }
 
-print OUTFILE "\tdb ", '$00', "\n\n";
+print OUTFILE "\t.db 0x00\n\n";
 
 
 #convert pattern data
@@ -292,11 +290,11 @@ for ($ix = 0; $ix <= ($uniqueptns)-1; $ix++) {
 		
 			$ch1[$rows] = $speed[$rows] + $drums[$rows];
 		
-			print OUTFILE "\tdb ",'$';
+			print OUTFILE "\t.db ",'0x';
 			printf(OUTFILE "%x", $ch1[$rows]);
-			print OUTFILE ',$';
+			print OUTFILE ',0x';
 			printf(OUTFILE "%x", $ch2[$rows]);
-			print OUTFILE ',$';
+			print OUTFILE ',0x';
 			printf(OUTFILE "%x", $ch3[$rows]);
 			print OUTFILE "\n";
 		
@@ -306,7 +304,7 @@ for ($ix = 0; $ix <= ($uniqueptns)-1; $ix++) {
 			$detune3 = 0;
 		}
 	
-		print OUTFILE "\tdb ",'$ff',"\n\n";
+		print OUTFILE "\t.db 0xff\n\n";
 	}
 }
 
