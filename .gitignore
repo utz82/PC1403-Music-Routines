@@ -1,0 +1,13 @@
+ihx2bas
+ihx2bin
+*.hlr
+*.lst
+*.rel
+*.rst
+*.sym
+*.ihx
+*.map
+*.bas
+*.bin
+*.wav
+

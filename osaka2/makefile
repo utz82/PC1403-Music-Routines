@@ -1,11 +1,11 @@
 # tools
 
 # AS61860 assembler
-ASM=../../as61860
+ASM=as61860
 ASMFLAGS=-los
 
 # ASLINK linker
-LNK=../../aslink
+LNK=aslink
 LNKFLAGS=-imwu -b play=BASE
 
 # C compiler
